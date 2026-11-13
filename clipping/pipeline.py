@@ -16,7 +16,8 @@ from urllib.parse import urlparse, urlunparse
 
 import yaml
 
-from . import editor, feeds, search, state, verify
+from . import accumulate, editor, feeds, gdelt, native, search, state, verify
+from .relevance import build_matcher
 from .models import STALE, UNVERIFIED, VERIFIED, Candidate, SourceResult
 from .render import Entry, render_html, render_text
 from .timewin import BRT, Window, freshness_window
@@ -110,8 +111,10 @@ def keywords(title: str, n: int = 6) -> str:
 
 # ------------------------------------------------------------------ collection
 
-def collect(window: Window, sources: dict, companies: dict,
-            deadline: float | None = None) -> tuple[list[SourceResult], list[SourceResult]]:
+def collect(window: Window, sources: dict, companies: dict, deadline: float | None = None,
+            include_searches: bool = True) -> tuple[list[SourceResult], list[SourceResult]]:
+    """Every channel, every run: RSS.app, the outlets' native sitemaps/RSS, GDELT, secondary sources,
+    other outlets and (unless include_searches=False, as in the hourly accumulator) all news searches."""
     when_days = 4 if window.monday else 2
     kw = sources.get("site_query_keywords", {})
     searches: list[tuple[str, str, str, str | None, str | None]] = []  # label, query, edition, country, company
@@ -138,20 +141,42 @@ def collect(window: Window, sources: dict, companies: dict,
         searches.append((f"site:{s['domain']}", f"site:{s['domain']} {lang_kw}".strip(), ed,
                          None if country == "OTHER" else country, None))
 
+    if not include_searches:
+        searches = []
+    site_outlet = {f"site:{s['domain']}": s["outlet"] for s in site_cfgs}
+
     rss_results: list[SourceResult] = []
     other_results: list[SourceResult] = []
     with ThreadPoolExecutor(max_workers=10) as feed_pool, ThreadPoolExecutor(max_workers=8) as src_pool, \
-            ThreadPoolExecutor(max_workers=int(os.environ.get("SEARCH_CONCURRENCY", "6"))) as search_pool:
+            ThreadPoolExecutor(max_workers=int(os.environ.get("SEARCH_CONCURRENCY", "6"))) as search_pool, \
+            ThreadPoolExecutor(max_workers=1) as gdelt_pool:
         rss_futs = [feed_pool.submit(feeds.fetch_rss_app, f["name"], f["outlet"], f["url"], window)
                     for f in sources["rss_app"]]
-        src_futs = [src_pool.submit(feeds.fetch_source, s, "secondary", window) for s in sources.get("secondary", [])]
+        gdelt_fut = gdelt_pool.submit(gdelt.fetch_all, sources.get("gdelt_domains", []), window)
+        src_futs = [src_pool.submit(native.fetch_native, s, window) for s in sources.get("native_sites", [])]
+        src_futs += [src_pool.submit(feeds.fetch_source, s, "secondary", window) for s in sources.get("secondary", [])]
         src_futs += [src_pool.submit(feeds.fetch_source, s, "outlet", window) for s in sources.get("outlets", [])]
         srch_futs = [search_pool.submit(search.news_search, label, q, ed, when_days, country, company, deadline)
                      for label, q, ed, country, company in searches]
         for f in as_completed(src_futs + srch_futs):
             other_results.append(f.result())
+        other_results += gdelt_fut.result()
         for f in rss_futs:
             rss_results.append(f.result())
+
+    outlet_of = {f["name"]: f["outlet"] for f in sources["rss_app"]}
+    for r in rss_results:
+        r.outlet = outlet_of.get(r.name, "")
+    for r in other_results:
+        if r.kind == "search" and r.name in site_outlet:
+            r.outlet = site_outlet[r.name]
+
+    # General-interest channels carry the whole site (sports, politics…): keep only plausibly relevant items.
+    relevant = build_matcher(companies)
+    prefilter_native = {s["outlet"] for s in sources.get("native_sites", []) if s.get("prefilter")}
+    for r in other_results:
+        if (r.kind == "native" and r.outlet in prefilter_native) or (r.kind == "gdelt" and r.note == "prefilter"):
+            r.items = [c for c in r.items if relevant(c.title, c.url)]
 
     # Final pass: minutes have passed since the first attempts; give any still-stale RSS.app feed
     # two more clean cache-busted tries before calling it stuck.
@@ -168,7 +193,7 @@ def collect(window: Window, sources: dict, companies: dict,
 # ------------------------------------------------------------------ notes
 
 def coverage_notes(window: Window, rss: list[SourceResult], others: list[SourceResult], companies: dict,
-                   feed_state: dict, run_day: str) -> list[str]:
+                   feed_state: dict, run_day: str, acc: dict | None = None) -> list[str]:
     notes: list[str] = []
     for r in rss:
         tries = len(r.attempts)
@@ -180,6 +205,10 @@ def coverage_notes(window: Window, rss: list[SourceResult], others: list[SourceR
             streak = state.record(feed_state, r.name, True, r.newest, run_day)
             newest = r.newest.astimezone(BRT).strftime("%d/%m %H:%M") if r.newest else "sem datas"
             since = feed_state[r.name].get("stale_since")
+            seen = accumulate.channel_newest(acc or {}, r.name)
+            if seen and (not r.newest or seen > r.newest):
+                notes.append(f"Feed RSS.app {r.name}: nas coletas ao longo da noite chegou a mostrar itens até "
+                             f"{seen.astimezone(BRT):%d/%m %H:%M} BRT (guardados e usados no clipping).")
             notes.append(
                 f"Feed RSS.app {r.name} só retornou itens até {newest} BRT após {tries} tentativas com cache-buster "
                 f"distintos — possível feed travado no RSS.app, vale regenerar/checar "
@@ -188,8 +217,16 @@ def coverage_notes(window: Window, rss: list[SourceResult], others: list[SourceR
         else:
             state.record(feed_state, r.name, False, r.newest, run_day)
 
+    notes += channel_matrix(window, rss, others)
+    g = [r for r in others if r.kind == "gdelt"]
+    if g and not any(r.reachable for r in g):
+        notes.append("GDELT inacessível nesta execução (canal complementar; demais canais seguiram normalmente).")
+    nat_down = [r.outlet for r in others if r.kind == "native" and not r.reachable]
+    if nat_down:
+        notes.append("Canais nativos (robots.txt/sitemap/RSS próprio) bloqueados para: " + ", ".join(nat_down) + ".")
+
     for r in others:
-        if r.kind == "search":
+        if r.kind in ("search", "native", "gdelt", "accumulated"):
             continue
         if not r.reachable:
             notes.append(f"Fonte {r.name}: inacessível (feed e listagem falharam) — coberta só via busca site: no Google News.")
@@ -216,7 +253,44 @@ def coverage_notes(window: Window, rss: list[SourceResult], others: list[SourceR
     return notes
 
 
+def channel_matrix(window: Window, rss: list[SourceResult], others: list[SourceResult]) -> list[str]:
+    """Per RSS.app outlet: how many in-window items each independent channel delivered. Shows at a glance
+    whether a stuck RSS.app feed actually cost coverage."""
+    labels = [("rss_app", "RSS.app"), ("native", "sitemap/RSS próprio"), ("gdelt", "GDELT"),
+              ("search", "Google site:"), ("accumulated", "coleta de hora em hora")]
+    notes = []
+    for outlet in dict.fromkeys(r.outlet for r in rss if r.outlet):
+        parts = []
+        for kind, label in labels:
+            rs = [r for r in rss + others if r.kind == kind and (r.outlet == outlet or (
+                kind == "accumulated"))]
+            if not rs:
+                continue
+            items = [c for r in rs for c in r.items
+                     if (kind != "accumulated" or c.source == outlet) and window.contains(c.feed_published)]
+            if kind == "native" and rs and not any(r.reachable for r in rs):
+                parts.append(f"{label} inacessível")
+            else:
+                parts.append(f"{label} {len(items)}")
+        notes.append(f"Canais {outlet} (itens na janela): " + " · ".join(parts))
+    return notes
+
+
 # ------------------------------------------------------------------ main flow
+
+def collect_only(now: datetime | None = None) -> int:
+    """Hourly accumulator run: collect feeds/sitemaps/GDELT (no searches, no Claude) and store everything dated."""
+    window = freshness_window(now)
+    sources, companies = load_config()
+    rss, others = collect(window, sources, companies, include_searches=False)
+    data = accumulate.load()
+    new = accumulate.add(data, rss + others, window.end)
+    accumulate.save(data)
+    fresh = {r.name: (r.newest.astimezone(BRT).strftime("%d/%m %H:%M") if r.newest else "-") for r in rss}
+    log.info("Acumulador: %d itens novos guardados (total %d). RSS.app mais recente por feed: %s",
+             new, len(data["items"]), fresh)
+    return new
+
 
 def run(dry_run: bool = False, now: datetime | None = None, out_dir: Path | None = None) -> Path:
     t0 = time.time()
@@ -230,6 +304,14 @@ def run(dry_run: bool = False, now: datetime | None = None, out_dir: Path | None
     # 1) collect from every source, every run
     collect_deadline = t0 + 60 * float(os.environ.get("COLLECT_DEADLINE_MINUTES", "12"))
     rss, others = collect(window, sources, companies, collect_deadline)
+    acc = accumulate.load()
+    accumulate.add(acc, rss + others, window.end)
+    accumulate.save(acc)
+    acc_items = accumulate.candidates(acc, window)
+    others.append(SourceResult(name="Coleta de hora em hora (acumulado)", kind="accumulated", items=acc_items,
+                               reachable=True, fresh=bool(acc_items)))
+    report.notes.append(f"Coleta de hora em hora: {accumulate.runs_in_window(acc, window)} coletas dentro da janela, "
+                        f"{len(acc_items)} itens datados guardados nelas.")
     all_results = rss + others
     raw = [c for r in all_results for c in r.items]
     report.sources = [{"name": r.name, "kind": r.kind, "reachable": r.reachable, "items": len(r.items),
@@ -291,7 +373,7 @@ def run(dry_run: bool = False, now: datetime | None = None, out_dir: Path | None
 
     # 7) notes, render, deliver
     feed_state = state.load()
-    report.notes = coverage_notes(window, rss, others, companies, feed_state, run_day) + report.notes
+    report.notes = coverage_notes(window, rss, others, companies, feed_state, run_day, acc) + report.notes
     state.save(feed_state)
     excl = Counter(e["reason"] for e in report.excluded)
     report.notes.append(

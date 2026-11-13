@@ -72,7 +72,7 @@ class FeedAttempt:
 class SourceResult:
     """Outcome of checking one source (feed, listing page or search query)."""
     name: str
-    kind: str                          # "rss_app" | "secondary" | "outlet" | "search"
+    kind: str                          # "rss_app" | "secondary" | "outlet" | "search" | "native" | "gdelt" | "accumulated"
     items: list[Candidate] = field(default_factory=list)
     attempts: list[FeedAttempt] = field(default_factory=list)
     reachable: bool = False
@@ -80,3 +80,4 @@ class SourceResult:
     fresh: bool | None = None          # None = no dates available to judge (listing page)
     used_url: str = ""
     note: str = ""
+    outlet: str = ""                   # outlet this channel belongs to (for the per-outlet channel report)

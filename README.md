@@ -3,6 +3,28 @@
 Versão em código do prompt diário de clipping. Roda sozinho às 05:17 BRT (seg–sex) no GitHub Actions,
 segue as mesmas regras do prompt e envia o e-mail **"LatAm Financials Clipping — DD/MM/AAAA"**.
 
+## Não depender só do RSS.app
+
+O `?_=` só fura o cache do CDN; ele não obriga o RSS.app a visitar o site de novo (isso acontece no
+ritmo do plano), e cada feed só guarda os últimos ~20 itens. Por isso cada veículo do RSS.app é coberto
+por **cinco canais independentes**, todos em toda execução:
+
+1. **RSS.app** (como antes, com o loop de retry).
+2. **Canais nativos do próprio veículo** (`native_sites`): o código lê o `robots.txt`, acha os
+   *sitemaps de notícias* — que os sites mantêm atualizados em minutos para o Google, com título e
+   horário exato de publicação — e o RSS próprio anunciado na página inicial.
+3. **GDELT** (`gdelt_domains`): índice público de notícias, gratuito e sem chave, atualizado a cada 15 min.
+4. **Google News `site:`** e as buscas por empresa.
+5. **Coleta noturna** (`.github/workflows/collect.yml`): a cada 2 horas, das 13h41 às 3h41 BRT, guarda
+   tudo que aparecer em qualquer canal. Às 05:17 o clipping também usa o que já saiu dos feeds.
+
+O e-mail traz, por veículo, quantos itens cada canal trouxe, por exemplo
+`Canais Estadão (itens na janela): RSS.app 0 · sitemap/RSS próprio 41 · GDELT 37 · Google site: 12 ·
+coleta de hora em hora 29`. Assim fica claro quando um feed travado não custou cobertura, e quando custou.
+
+Datas de canais nativos/GDELT são tratadas como as do feed: primeiro sinal, confirmado na página do
+artigo. `lastmod` de sitemaps comuns é data de *modificação* e nunca é usada como data de publicação.
+
 ## O que mudou em relação ao prompt
 
 | Problema do prompt | Como o código resolve |
@@ -25,7 +47,8 @@ URL duplicada) que não dependem do modelo.
 ## Fluxo
 
 ```
-coleta (RSS.app + secundárias + outlets + 36 buscas por empresa + setoriais + site:)
+coleta (RSS.app + sitemaps/RSS nativos + GDELT + secundárias + outlets + 36 buscas por empresa
+        + setoriais + site: + itens guardados pela coleta noturna)
   → dedup → filtro de janela pela data do feed
   → triagem (Claude) → resolve links do Google News
   → verificação da data em cada página → corroboração dos bloqueados (Finsiders/SonhoSeguro)
@@ -57,6 +80,7 @@ python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 export ANTHROPIC_API_KEY=...            # e GMAIL_ADDRESS / GMAIL_APP_PASSWORD / CLIPPING_TO para enviar
 python -m clipping --dry-run            # gera output/clipping-AAAA-MM-DD.txt sem enviar
+python -m clipping --collect-only       # só coleta e guarda (o que a coleta noturna faz)
 python -m clipping --now 2026-11-16T05:30:00-03:00 --dry-run   # simula uma segunda-feira
 python -m pytest -q                     # testes
 ```

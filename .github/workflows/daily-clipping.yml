@@ -31,13 +31,13 @@ jobs:
       - name: Instalar dependências
         run: pip install -r requirements.txt
 
-      # Memória entre execuções (detecção de feeds travados há vários dias)
-      - name: Restaurar histórico dos feeds
+      # Memória entre execuções: feeds travados há vários dias + itens guardados pela coleta noturna
+      - name: Restaurar estado
         uses: actions/cache/restore@v4
         with:
           path: state
-          key: feed-health-${{ github.run_id }}
-          restore-keys: feed-health-
+          key: clipping-state-${{ github.run_id }}
+          restore-keys: clipping-state-
 
       - name: Gerar e enviar o clipping
         env:
@@ -47,12 +47,12 @@ jobs:
           CLIPPING_TO: ${{ secrets.CLIPPING_TO }}
         run: python -m clipping ${{ inputs.dry_run && '--dry-run' || '' }}
 
-      - name: Salvar histórico dos feeds
+      - name: Salvar estado
         if: always()
         uses: actions/cache/save@v4
         with:
           path: state
-          key: feed-health-${{ github.run_id }}
+          key: clipping-state-${{ github.run_id }}
 
       - name: Guardar o clipping e o relatório da execução
         if: always()

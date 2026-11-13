@@ -75,6 +75,8 @@ def test_end_to_end(monkeypatch, tmp_path):
     monkeypatch.setattr(search, "decode_google_news", lambda cands: None)
     monkeypatch.setattr(search, "news_search", lambda *a, **k: SourceResult(name="x", kind="search"))
     monkeypatch.setattr(state, "STATE_FILE", tmp_path / "feed_health.json")
+    from clipping import accumulate
+    monkeypatch.setattr(accumulate, "FILE", tmp_path / "acc.json")
 
     out = pipeline.run(dry_run=True, now=NOW, out_dir=tmp_path)
     txt = out.read_text()

@@ -41,6 +41,67 @@ rss_app:
     outlet: Seu Dinheiro
     url: https://rss.app/feeds/f2zmMrJ3WJEHoavK.xml
 
+# Canais NATIVOS dos mesmos veículos do RSS.app — independentes do RSS.app.
+# A cada execução o código:
+#   1) lê https://<host>/robots.txt e pega os "Sitemap:" de notícias (Google News sitemaps:
+#      título + horário exato de publicação, atualizados em minutos);
+#   2) procura <link rel="alternate" type="application/rss+xml"> na página inicial (RSS próprio);
+#   3) tenta também as URLs listadas em `try` (palpites comuns; as que não existirem são ignoradas).
+# `paths`: se preenchido, só itens cuja URL contém um desses trechos (ex.: seção de economia).
+# `prefilter: true`: veículo generalista → só entram títulos/URLs com termos do setor ou nomes de empresas.
+native_sites:
+  - {outlet: Valor Econômico, host: valor.globo.com, country: BR}
+  - {outlet: Pipeline Valor, host: pipelinevalor.globo.com, country: BR}
+  - {outlet: O Globo, host: oglobo.globo.com, country: BR, paths: [/economia/], prefilter: true}
+  - outlet: Estadão
+    host: www.estadao.com.br
+    country: BR
+    paths: [/economia/]
+    prefilter: true
+    try:
+      - "https://www.estadao.com.br/arc/outboundfeeds/news-sitemap/?outputType=xml"
+      - "https://www.estadao.com.br/arc/outboundfeeds/feeds/rss/sections/economia/?outputType=xml"
+  - outlet: Folha de S.Paulo
+    host: www1.folha.uol.com.br
+    country: BR
+    paths: [/mercado/]
+    prefilter: true
+    try: ["https://feeds.folha.uol.com.br/mercado/rss091.xml"]
+  - outlet: Veja
+    host: veja.abril.com.br
+    country: BR
+    paths: [/economia/]
+    prefilter: true
+    try: ["https://veja.abril.com.br/economia/feed/", "https://veja.abril.com.br/feed/"]
+  - {outlet: UOL, host: economia.uol.com.br, country: BR, prefilter: true}
+  - outlet: Brazil Journal
+    host: braziljournal.com
+    country: BR
+    prefilter: true
+    try: ["https://braziljournal.com/feed/"]
+  - outlet: Seu Dinheiro
+    host: www.seudinheiro.com
+    country: BR
+    prefilter: true
+    try: ["https://www.seudinheiro.com/feed/"]
+
+# GDELT (índice público de notícias, atualizado a cada 15 min, sem chave): uma consulta por domínio.
+gdelt_domains:
+  - {outlet: Valor Econômico, domain: valor.globo.com, country: BR}
+  - {outlet: Pipeline Valor, domain: pipelinevalor.globo.com, country: BR}
+  - {outlet: O Globo, domain: oglobo.globo.com, country: BR, prefilter: true}
+  - {outlet: Estadão, domain: estadao.com.br, country: BR, prefilter: true}
+  - {outlet: Folha de S.Paulo, domain: folha.uol.com.br, country: BR, prefilter: true}
+  - {outlet: Veja, domain: veja.abril.com.br, country: BR, prefilter: true}
+  - {outlet: UOL, domain: uol.com.br, country: BR, prefilter: true}
+  - {outlet: Brazil Journal, domain: braziljournal.com, country: BR, prefilter: true}
+  - {outlet: Seu Dinheiro, domain: seudinheiro.com, country: BR, prefilter: true}
+  - {outlet: InfoMoney, domain: infomoney.com.br, country: BR, prefilter: true}
+  - {outlet: El Financiero, domain: elfinanciero.com.mx, country: MX, prefilter: true}
+  - {outlet: Ámbito, domain: ambito.com, country: AR, prefilter: true}
+  - {outlet: La República, domain: larepublica.co, country: CO, prefilter: true}
+  - {outlet: Gestión, domain: gestion.pe, country: PE, prefilter: true}
+
 # Domínios dos outlets do RSS.app — usados para buscas `site:` no Google News
 # (descoberta complementar; os artigos destes domínios costumam dar 403 na verificação).
 rss_app_site_queries:
