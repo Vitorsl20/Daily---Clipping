@@ -1,0 +1,147 @@
+# Fontes do clipping. Edite à vontade — o código lê este arquivo a cada execução.
+#
+# rss_app: feeds pagos do RSS.app (outlets com paywall/anti-bot). Sempre buscados com
+#   UM único cache-buster numérico `?_=<unix>` e com o loop de retry obrigatório.
+# secondary: fontes secundárias do Brasil — SEMPRE testadas, toda execução.
+# outlets: demais veículos (feeds RSS próprios ou, se falharem, a página de listagem).
+#
+# Para cada fonte em `secondary`/`outlets`, `rss` e `listing` são tentados nessa ordem;
+# a primeira URL que responder com itens é usada. `site_query` gera, além disso, uma busca
+# no Google News restrita ao domínio (rede de segurança se o feed/listagem falhar).
+
+rss_app:
+  - name: Valor Econômico — Finanças
+    outlet: Valor Econômico
+    url: https://rss.app/feeds/93Gss6DQJjvs1MF7.xml
+  - name: Valor Econômico — Empresas
+    outlet: Valor Econômico
+    url: https://rss.app/feeds/wSp0fjgKEdlHjEUa.xml
+  - name: O Globo — Economia
+    outlet: O Globo
+    url: https://rss.app/feeds/j1RxntBhrxooacg3.xml
+  - name: Estadão — Economia
+    outlet: Estadão
+    url: https://rss.app/feeds/4RjcVw3H5e7DmdG8.xml
+  - name: Folha de S.Paulo — Mercado
+    outlet: Folha de S.Paulo
+    url: https://rss.app/feeds/h8BtCrfrAHD1oko8.xml
+  - name: Veja — Economia
+    outlet: Veja
+    url: https://rss.app/feeds/dGRigh28TFfEpFM5.xml
+  - name: UOL — Economia
+    outlet: UOL
+    url: https://rss.app/feeds/QvbijqzxcITnnH9Q.xml
+  - name: Pipeline Valor
+    outlet: Pipeline Valor
+    url: https://rss.app/feeds/GUhs3m0MhToqgk6M.xml
+  - name: Brazil Journal — Negócios
+    outlet: Brazil Journal
+    url: https://rss.app/feeds/4a9UtJ1pZ8ToWVps.xml
+  - name: Seu Dinheiro — Últimas notícias
+    outlet: Seu Dinheiro
+    url: https://rss.app/feeds/f2zmMrJ3WJEHoavK.xml
+
+# Domínios dos outlets do RSS.app — usados para buscas `site:` no Google News
+# (descoberta complementar; os artigos destes domínios costumam dar 403 na verificação).
+rss_app_site_queries:
+  - {outlet: Valor Econômico, domain: valor.globo.com, country: BR}
+  - {outlet: O Globo, domain: oglobo.globo.com, country: BR}
+  - {outlet: Estadão, domain: estadao.com.br, country: BR}
+  - {outlet: Folha de S.Paulo, domain: folha.uol.com.br, country: BR}
+  - {outlet: Veja, domain: veja.abril.com.br, country: BR}
+  - {outlet: UOL, domain: economia.uol.com.br, country: BR}
+  - {outlet: Pipeline Valor, domain: pipelinevalor.globo.com, country: BR}
+  - {outlet: Brazil Journal, domain: braziljournal.com, country: BR}
+  - {outlet: Seu Dinheiro, domain: seudinheiro.com, country: BR}
+
+secondary:
+  - name: FinsidersBrasil
+    country: BR
+    rss: ["https://finsidersbrasil.com.br/feed/"]
+    listing: ["https://finsidersbrasil.com.br/"]
+    site_query: finsidersbrasil.com.br
+  - name: SonhoSeguro
+    country: BR
+    rss: ["https://www.sonhoseguro.com.br/feed/", "https://sonhoseguro.com.br/feed/"]
+    listing: ["https://www.sonhoseguro.com.br/"]
+    site_query: sonhoseguro.com.br
+  - name: NeoFeed
+    country: BR
+    rss: ["https://neofeed.com.br/feed/"]
+    listing: ["https://neofeed.com.br/"]
+    site_query: neofeed.com.br
+  - name: Exame
+    country: BR
+    rss: ["https://exame.com/negocios/feed/", "https://exame.com/feed/"]
+    listing: ["https://exame.com/negocios/"]
+    site_query: exame.com
+  - name: FinanceNews
+    country: BR
+    rss: ["https://www.financenews.com.br/feed/"]
+    listing: ["https://www.financenews.com.br/"]
+    site_query: financenews.com.br
+
+outlets:
+  - name: InfoMoney
+    country: BR
+    rss: ["https://www.infomoney.com.br/feed/"]
+    listing: ["https://www.infomoney.com.br/ultimas-noticias/"]
+    site_query: infomoney.com.br
+  - name: Money Times
+    country: BR
+    rss: ["https://www.moneytimes.com.br/feed/"]
+    listing: ["https://www.moneytimes.com.br/ultimas-noticias/"]
+    site_query: moneytimes.com.br
+  - name: Bloomberg Línea (BR)
+    country: BR
+    rss: ["https://www.bloomberglinea.com.br/arc/outboundfeeds/rss/?outputType=xml"]
+    listing:
+      - "https://www.bloomberglinea.com.br/mercados/"
+      - "https://www.bloomberglinea.com.br/financas/"
+      - "https://www.bloomberglinea.com.br/brasil/"
+    site_query: bloomberglinea.com.br
+  - name: Bloomberg Línea
+    country: OTHER
+    rss: ["https://www.bloomberglinea.com/arc/outboundfeeds/rss/?outputType=xml"]
+    listing: ["https://www.bloomberglinea.com/mercados/"]
+    site_query: bloomberglinea.com
+  - name: Terra
+    country: BR
+    rss: []
+    listing: []
+    site_query: terra.com.br/economia
+  - name: El Financiero
+    country: MX
+    rss: ["https://www.elfinanciero.com.mx/arc/outboundfeeds/rss/?outputType=xml"]
+    listing: ["https://www.elfinanciero.com.mx/mercados/", "https://www.elfinanciero.com.mx/empresas/"]
+    site_query: elfinanciero.com.mx
+  - name: Ámbito
+    country: AR
+    rss: ["https://www.ambito.com/rss/pages/finanzas.xml", "https://www.ambito.com/rss/pages/economia.xml"]
+    listing: ["https://www.ambito.com/finanzas"]
+    site_query: ambito.com
+  - name: La Nación
+    country: AR
+    rss: ["https://www.lanacion.com.ar/arc/outboundfeeds/rss/category/economia/?outputType=xml"]
+    listing: ["https://www.lanacion.com.ar/economia/"]
+    site_query: lanacion.com.ar/economia
+  - name: La República
+    country: CO
+    rss: ["https://www.larepublica.co/rss/finanzas.xml", "https://www.larepublica.co/rss/"]
+    listing: ["https://www.larepublica.co/finanzas"]
+    site_query: larepublica.co
+  - name: Gestión
+    country: PE
+    rss: ["https://gestion.pe/arcio/rss/category/economia/", "https://gestion.pe/arcio/rss/"]
+    listing: ["https://gestion.pe/economia/"]
+    site_query: gestion.pe
+  - name: El Comercio
+    country: PE
+    rss: ["https://elcomercio.pe/arcio/rss/category/economia/"]
+    listing: ["https://elcomercio.pe/economia/"]
+    site_query: elcomercio.pe/economia
+
+# Palavras do setor usadas para restringir as buscas `site:` (evita trazer esporte/lifestyle).
+site_query_keywords:
+  pt: '(banco OR bancos OR fintech OR seguradora OR seguros OR B3 OR crédito OR "Banco Central" OR CVM OR Susep)'
+  es: '(banco OR bancos OR fintech OR aseguradora OR seguros OR bolsa OR crédito OR "banco central")'

@@ -1,0 +1,63 @@
+name: LatAm Financials Clipping
+
+on:
+  schedule:
+    # 08:17 UTC = 05:17 BRT, segunda a sexta. O GitHub pode atrasar crons em alguns minutos,
+    # por isso começa um pouco antes das 05:30; a janela de notícias é calculada no horário real da execução.
+    - cron: "17 8 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Só gerar o clipping (não enviar e-mail)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: clipping
+  cancel-in-progress: false
+
+jobs:
+  clipping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      # Memória entre execuções (detecção de feeds travados há vários dias)
+      - name: Restaurar histórico dos feeds
+        uses: actions/cache/restore@v4
+        with:
+          path: state
+          key: feed-health-${{ github.run_id }}
+          restore-keys: feed-health-
+
+      - name: Gerar e enviar o clipping
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          CLIPPING_TO: ${{ secrets.CLIPPING_TO }}
+        run: python -m clipping ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      - name: Salvar histórico dos feeds
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state
+          key: feed-health-${{ github.run_id }}
+
+      - name: Guardar o clipping e o relatório da execução
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clipping-${{ github.run_id }}
+          path: output/
+          retention-days: 30

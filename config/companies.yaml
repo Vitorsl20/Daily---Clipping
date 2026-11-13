@@ -1,0 +1,94 @@
+# Universo de cobertura (36 empresas). Cada empresa recebe uma busca dedicada TODA execução
+# (Google News, com Bing News como reserva), no idioma do país e, quando `english: true`,
+# também em inglês. `terms` são combinados com OR; use aspas para nomes compostos.
+# `extra_countries` adiciona edições de outros países (ex.: dLocal também no Brasil).
+
+companies:
+  # ---------------- Brasil ----------------
+  - {name: Banco ABC Brasil, ticker: ABCB4, country: BR, terms: ['"ABC Brasil"', '"Banco ABC"', ABCB4]}
+  - {name: Itaú Unibanco, ticker: ITUB4, country: BR, english: true, terms: ['"Itaú Unibanco"', Itaú, ITUB4]}
+  - {name: Santander Brasil, ticker: SANB11, country: BR, terms: ['"Santander Brasil"', SANB11, '"Santander" banco']}
+  - {name: Banco do Brasil, ticker: BBAS3, country: BR, terms: ['"Banco do Brasil"', BBAS3]}
+  - {name: Bradesco, ticker: BBDC4, country: BR, english: true, terms: [Bradesco, BBDC4]}
+  - {name: Inter, ticker: INTR, country: BR, english: true, terms: ['"Banco Inter"', '"Inter&Co"', INTR]}
+  - {name: Nubank, ticker: NU, country: BR, english: true, terms: [Nubank, '"Nu Holdings"']}
+  - {name: Banco Mercantil, ticker: BMEB4, country: BR, terms: ['"Banco Mercantil"', '"Mercantil do Brasil"', BMEB4]}
+  - {name: Agibank, ticker: AGBK, country: BR, terms: [Agibank, AGBK]}
+  - {name: BTG Pactual, ticker: BPAC11, country: BR, english: true, terms: ['"BTG Pactual"', BTG, BPAC11]}
+  - {name: BR Partners, ticker: BRBI11, country: BR, terms: ['"BR Partners"', BRBI11]}
+  - {name: PicPay, ticker: PICS, country: BR, terms: [PicPay]}
+  - {name: BB Seguridade, ticker: BBSE3, country: BR, terms: ['"BB Seguridade"', BBSE3, Brasilseg]}
+  - {name: Porto Seguro, ticker: PSSA3, country: BR, terms: ['"Porto Seguro" seguradora', '"Porto Seguro" PSSA3', '"Porto Seguro" resultado', PSSA3]}
+  - {name: Caixa Seguridade, ticker: CXSE3, country: BR, terms: ['"Caixa Seguridade"', CXSE3, '"Caixa Vida e Previdência"']}
+  - {name: IRB(Re), ticker: IRBR3, country: BR, terms: ['"IRB Re"', '"IRB(Re)"', '"IRB Brasil"', IRBR3]}
+  - {name: Stone, ticker: STNE, country: BR, english: true, terms: [StoneCo, '"Stone Pagamentos"', '"Stone" maquininha', STNE]}
+  - {name: PagBank, ticker: PAGS, country: BR, english: true, terms: [PagBank, PagSeguro, PAGS]}
+  - {name: B3, ticker: B3SA3, country: BR, terms: [B3SA3, '"B3" bolsa', '"a B3"']}
+  - {name: XP, ticker: XP, country: BR, english: true, terms: ['"XP Inc"', '"XP Investimentos"']}
+
+  # ---------------- México ----------------
+  - {name: Banorte, ticker: GFNORTEO, country: MX, english: true, terms: [Banorte, GFNORTEO]}
+  - {name: Regional (Banregio), ticker: RA, country: MX, terms: [Banregio, '"Regional" Banregio', '"Grupo Financiero Regional"', '"R/A" banco']}
+  - {name: Gentera, ticker: GENTERA, country: MX, terms: [Gentera, '"Compartamos Banco"']}
+  - {name: Banco del Bajío, ticker: BBAJIOO, country: MX, terms: ['"Banco del Bajío"', BanBajío, BBAJIOO]}
+  - {name: Quálitas, ticker: Q, country: MX, terms: [Quálitas, Qualitas aseguradora]}
+  - {name: Bolsa Mexicana de Valores, ticker: BOLSAA, country: MX, terms: ['"Bolsa Mexicana de Valores"', '"Grupo BMV"', BOLSAA]}
+
+  # ---------------- Argentina ----------------
+  - {name: Banco Macro, ticker: BMA, country: AR, english: true, terms: ['"Banco Macro"']}
+  - {name: Grupo Galicia, ticker: GGAL, country: AR, english: true, terms: ['"Grupo Galicia"', '"Banco Galicia"', '"Grupo Financiero Galicia"', GGAL]}
+  - {name: BBVA Argentina, ticker: BBAR, country: AR, terms: ['"BBVA Argentina"', BBAR]}
+  - {name: Supervielle, ticker: SUPV, country: AR, terms: [Supervielle, SUPV]}
+  - {name: Banco Hipotecario, ticker: BHIP, country: AR, terms: ['"Banco Hipotecario"', BHIP]}
+
+  # ---------------- Colômbia ----------------
+  - {name: Grupo Aval, ticker: PFAVAL, country: CO, terms: ['"Grupo Aval"', '"Banco de Bogotá"', PFAVAL]}
+  - {name: Cibest (Bancolombia), ticker: PFCIBEST, country: CO, english: true, terms: [Cibest, Bancolombia, PFCIBEST]}
+  - {name: Davivienda, ticker: PFDAVIGRP, country: CO, extra_countries: [PA], terms: [Davivienda, PFDAVIGRP]}
+
+  # ---------------- Peru ----------------
+  - {name: Credicorp, ticker: BAP, country: PE, english: true, terms: [Credicorp, '"Banco de Crédito del Perú"', Mibanco, Yape]}
+
+  # ---------------- Uruguai ----------------
+  - {name: dLocal, ticker: DLO, country: UY, english: true, extra_countries: [BR], terms: [dLocal, '"DLO"']}
+
+# Buscas setoriais/regulatórias por país (além das buscas por empresa).
+sector_queries:
+  BR:
+    - '"Banco Central" bancos'
+    - 'Febraban'
+    - 'Susep seguradoras'
+    - 'CVM mercado de capitais'
+    - 'fintech Brasil'
+    - 'inadimplência crédito bancos'
+    - 'Pix Banco Central'
+    - 'Caixa Econômica Federal'
+    - 'seguradora resultado trimestre'
+    - 'IPO OR follow-on B3'
+    - 'debêntures emissão recorde'
+    - 'banco liquidação extrajudicial'
+    - '"instituição de pagamento" Banco Central'
+  MX:
+    - 'CNBV bancos'
+    - 'Banxico banca'
+    - 'banca México crédito'
+    - 'aseguradoras México'
+    - 'fintech México'
+  AR:
+    - 'BCRA bancos'
+    - 'bancos argentinos'
+    - 'crédito bancario Argentina'
+    - 'fintech Argentina'
+  CO:
+    - 'Superfinanciera bancos'
+    - 'bancos Colombia'
+    - 'Banco de la República tasas bancos'
+  PE:
+    - 'SBS bancos Perú'
+    - 'banca Perú'
+    - 'BCRP crédito'
+  CL:
+    - 'CMF bancos Chile'
+  OTHER:
+    - 'LatAm banks'
+    - 'Latin America fintech'
