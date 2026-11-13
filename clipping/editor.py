@@ -154,11 +154,26 @@ def _article_block(c: Candidate) -> dict:
     }
 
 
-def write_up(cands: list[Candidate], window: Window, chunk: int = 60) -> dict[str, dict]:
+ALREADY_SENT_TASK = """
+These stories were ALREADY SENT in this morning's edition (one per line). Any entry below that covers the same
+story as one of them (even from another outlet) must be excluded with exclusion_reason=duplicate and
+duplicate_of="sent". Entries whose status is VERIFIED and whose url equals a morning item are NOT duplicates:
+they are re-verifications and must be included.
+<already_sent>
+{lines}
+</already_sent>"""
+
+
+def write_up(cands: list[Candidate], window: Window, already_sent: list[str] | None = None,
+             chunk: int = 60) -> dict[str, dict]:
     """Single call when possible so duplicates can be detected across the whole list."""
+    task = WRITE_TASK.format(window=window.describe())
+    if already_sent:
+        task += ALREADY_SENT_TASK.format(lines="\n".join(already_sent))
+
     def run(batch: list[Candidate]) -> list[dict]:
         payload = "\n".join(json.dumps(_article_block(c), ensure_ascii=False) for c in batch)
-        return _call(WRITE_TASK.format(window=window.describe()), payload, WRITE_SCHEMA, WRITE_EFFORT)["items"]
+        return _call(task, payload, WRITE_SCHEMA, WRITE_EFFORT)["items"]
 
     out: dict[str, dict] = {}
     batches = [cands[i:i + chunk] for i in range(0, len(cands), chunk)] or []

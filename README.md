@@ -73,6 +73,40 @@ Janela de notícias: desde ontem às 13:00 BRT até a hora da execução; **segu
    O resultado fica nos *artifacts* da execução: `clipping-AAAA-MM-DD.txt/.html` e um `.json` com o
    relatório completo (cada fonte, cada exclusão e o motivo).
 
+## Complemento das 6h no seu computador (Windows)
+
+A edição completa continua saindo às 05:17 pela nuvem. Quando o computador liga (a partir das 6h), uma tarefa
+agendada roda o **complemento**. Da conexão de casa, os sites que bloqueiam servidores (Valor, O Globo,
+Estadão…) costumam abrir. O complemento:
+
+1. lê no seu Gmail a edição das 05:17 (pelo IMAP, com a mesma senha de app; não precisa de outra credencial);
+2. reabre cada item **NÃO VERIFICADO** dela:
+   - data confirmada na janela → vai para **Agora verificados**, com o parágrafo completo;
+   - data confirmada fora da janela → vai para **Correções** ("desconsiderar");
+3. refaz a coleta inteira (todos os canais e as 36 buscas) e manda só as histórias que **não** estavam às 05:17;
+4. envia **"LatAm Financials Clipping — DD/MM/AAAA — complemento"**, só se houver algo a acrescentar.
+
+Ele roda uma vez por dia útil, até as 14h. Se a edição das 05:17 não estiver no Gmail (falha na nuvem),
+o computador espera até 20 min e, se ela não chegar, envia o clipping completo.
+
+### Instalação (uma vez)
+
+1. Instale o Git: abra o PowerShell e rode `winget install Git.Git` (ou baixe em git-scm.com).
+2. Baixe o projeto numa pasta sua, por exemplo:
+   `git clone https://github.com/Vitorsl20/Daily---Clipping.git "$HOME\Daily-Clipping"`
+   (o Windows abre o navegador para você entrar no GitHub, se o repositório for privado).
+3. Abra a pasta `scripts\windows` e dê **dois cliques em `INSTALAR.bat`**. Ele:
+   instala o Python se faltar (aí é só rodar de novo), instala as dependências, pede as credenciais
+   (as mesmas dos Secrets do GitHub; ficam só neste PC, no arquivo `.env`), cria a tarefa agendada
+   **"LatAm Clipping - complemento 6h"** e oferece um teste sem enviar e-mail.
+
+A tarefa dispara 2 min após o login e às 06:05. Se às 06:05 o PC estiver desligado ou dormindo, ela roda
+assim que ele voltar. A cada execução o código é atualizado com `git pull`. Logs: pasta `logs\`.
+Para remover: `scripts\windows\desinstalar.ps1`.
+
+Variáveis opcionais (no `.env`): `COMPLEMENT_LATEST_HOUR` (14), `COMPLEMENT_WAIT_MINUTES` (20),
+`COMPLEMENT_SEND_EMPTY=1` (manda e-mail mesmo sem novidades, como confirmação).
+
 ## Rodar localmente
 
 ```bash
@@ -81,6 +115,7 @@ pip install -r requirements.txt
 export ANTHROPIC_API_KEY=...            # e GMAIL_ADDRESS / GMAIL_APP_PASSWORD / CLIPPING_TO para enviar
 python -m clipping --dry-run            # gera output/clipping-AAAA-MM-DD.txt sem enviar
 python -m clipping --collect-only       # só coleta e guarda (o que a coleta noturna faz)
+python -m clipping --complement --dry-run --force   # testa o complemento das 6h
 python -m clipping --now 2026-11-16T05:30:00-03:00 --dry-run   # simula uma segunda-feira
 python -m pytest -q                     # testes
 ```

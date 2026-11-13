@@ -292,14 +292,13 @@ def collect_only(now: datetime | None = None) -> int:
     return new
 
 
-def run(dry_run: bool = False, now: datetime | None = None, out_dir: Path | None = None) -> Path:
-    t0 = time.time()
-    window = freshness_window(now)
-    run_day = window.end.strftime("%Y-%m-%d")
+def produce(window: Window, t0: float, report: RunReport, *, extra_usable: list[Candidate] | None = None,
+            already_sent: list[str] | None = None, record_health: bool = True
+            ) -> tuple[list[Entry], list[SourceResult], list[SourceResult]]:
+    """Steps shared by the morning brief and the 6h complement: collect → triage → verify → write → QC."""
     deadline = t0 + 60 * float(os.environ.get("CLIPPING_DEADLINE_MINUTES", "25"))
+    run_day = window.end.strftime("%Y-%m-%d")
     sources, companies = load_config()
-    report = RunReport(started=window.end.isoformat(), window=window.describe())
-    log.info("Janela: %s", window.describe())
 
     # 1) collect from every source, every run
     collect_deadline = t0 + 60 * float(os.environ.get("COLLECT_DEADLINE_MINUTES", "12"))
@@ -322,10 +321,13 @@ def run(dry_run: bool = False, now: datetime | None = None, out_dir: Path | None
     # 2) dedupe + freshness prefilter on feed/search timestamps
     _name_outlets(raw, sources)
     cands = merge_duplicates(raw)
+    skip_urls = {norm_url(c.url) for c in extra_usable or []}
     fresh = []
     for c in cands:
         if c.feed_published is not None and not window.contains(c.feed_published):
             continue  # feed already says it's older than the window
+        if norm_url(c.url) in skip_urls:
+            continue  # already handled (complement: re-checked morning items)
         fresh.append(c)
     report.counts.update(raw=len(raw), unique=len(cands), fresh_by_feed=len(fresh))
 
@@ -362,19 +364,21 @@ def run(dry_run: bool = False, now: datetime | None = None, out_dir: Path | None
         extra = [c for c in extra if norm_url(c.url) not in known]
         verified_or_flagged += [c for c in _verify_all(extra, window, deadline, report) if c.status == VERIFIED]
 
-    usable = [c for c in verified_or_flagged if c.status in (VERIFIED, UNVERIFIED)]
+    usable = (extra_usable or []) + [c for c in verified_or_flagged if c.status in (VERIFIED, UNVERIFIED)]
     report.counts.update(
         verified=sum(c.status == VERIFIED for c in usable),
         unverified=sum(c.status == UNVERIFIED for c in usable),
     )
 
-    # 6) write-up, de-duplication across outlets, final QC
-    entries = _write_and_qc(usable, window, report)
+    # 6) write-up, de-duplication across outlets (and against what was already sent), final QC
+    entries = _write_and_qc(usable, window, report, already_sent)
 
-    # 7) notes, render, deliver
+    # 7) coverage notes
     feed_state = state.load()
-    report.notes = coverage_notes(window, rss, others, companies, feed_state, run_day, acc) + report.notes
-    state.save(feed_state)
+    notes = coverage_notes(window, rss, others, companies, feed_state, run_day, acc)
+    if record_health:
+        state.save(feed_state)
+    report.notes = notes + report.notes
     excl = Counter(e["reason"] for e in report.excluded)
     report.notes.append(
         f"Estatísticas: {report.counts.get('raw', 0)} itens brutos → {report.counts.get('fresh_by_feed', 0)} na janela pelo feed "
@@ -382,26 +386,46 @@ def run(dry_run: bool = False, now: datetime | None = None, out_dir: Path | None
         f"({sum(not e.unverified for e in entries)} verificados, {sum(e.unverified for e in entries)} NÃO VERIFICADOS). "
         f"Exclusões: " + ", ".join(f"{k}={v}" for k, v in excl.most_common())
     )
-    report.notes.append(f"Tempo total de execução: {(time.time() - t0) / 60:.1f} min.")
+    return entries, rss, others
 
-    subject = f"LatAm Financials Clipping — {window.end.strftime('%d/%m/%Y')}"
-    text = render_text(entries, subject, window.describe(), report.notes)
-    html_body = render_html(entries, subject, window.describe(), report.notes)
 
+def _write_outputs(out_dir: Path | None, name: str, text: str, html_body: str, report: RunReport) -> Path:
     out_dir = out_dir or ROOT / "output"
     out_dir.mkdir(parents=True, exist_ok=True)
-    base = out_dir / f"clipping-{run_day}"
+    base = out_dir / name
     base.with_suffix(".txt").write_text(text, encoding="utf-8")
     base.with_suffix(".html").write_text(html_body, encoding="utf-8")
     base.with_suffix(".json").write_text(json.dumps(asdict(report), ensure_ascii=False, indent=2, default=str),
                                          encoding="utf-8")
+    return base.with_suffix(".txt")
+
+
+def run(dry_run: bool = False, now: datetime | None = None, out_dir: Path | None = None,
+        subject_suffix: str = "", extra_note: str | None = None) -> Path:
+    t0 = time.time()
+    window = freshness_window(now)
+    report = RunReport(started=window.end.isoformat(), window=window.describe())
+    log.info("Janela: %s", window.describe())
+    entries, _, _ = produce(window, t0, report)
+    if extra_note:
+        report.notes.insert(0, extra_note)
+    report.notes.append(f"Tempo total de execução: {(time.time() - t0) / 60:.1f} min.")
+
+    subject = subject_line(window) + subject_suffix
+    text = render_text(entries, subject, window.describe(), report.notes)
+    html_body = render_html(entries, subject, window.describe(), report.notes)
+    path = _write_outputs(out_dir, f"clipping-{window.end:%Y-%m-%d}", text, html_body, report)
     if not dry_run:
         from . import mailer
 
         mailer.send(subject, text, html_body)
         log.info("E-mail enviado: %s", subject)
     print(text)
-    return base.with_suffix(".txt")
+    return path
+
+
+def subject_line(window: Window) -> str:
+    return f"LatAm Financials Clipping — {window.end.strftime('%d/%m/%Y')}"
 
 
 def _verify_all(cands: list[Candidate], window: Window, deadline: float, report: RunReport) -> list[Candidate]:
@@ -442,12 +466,13 @@ def _corroborate(blocked: list[Candidate], window: Window) -> list[Candidate]:
     return [c for c in merge_duplicates(out) if not c.needs_gnews_decode]
 
 
-def _write_and_qc(usable: list[Candidate], window: Window, report: RunReport) -> list[Entry]:
+def _write_and_qc(usable: list[Candidate], window: Window, report: RunReport,
+                  already_sent: list[str] | None = None) -> list[Entry]:
     if not usable:
         return []
     by_id = {c.id: c for c in usable}
     try:
-        written = editor.write_up(usable, window)
+        written = editor.write_up(usable, window, already_sent)
     except editor.EditorError as e:
         report.notes.append(f"ATENÇÃO: redação automática falhou ({e}); itens listados apenas com o título original.")
         written = {c.id: {"include": True, "country": c.triage_country or c.country_hint or "OTHER_LATAM",
