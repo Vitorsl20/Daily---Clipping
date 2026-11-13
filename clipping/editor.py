@@ -8,17 +8,19 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import anthropic
-
+from . import llm
 from .models import VERIFIED, Candidate
 from .timewin import BRT, Window
 
 log = logging.getLogger(__name__)
 
-MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-5-5")
-TRIAGE_EFFORT = os.environ.get("CLAUDE_TRIAGE_EFFORT", "medium")
-WRITE_EFFORT = os.environ.get("CLAUDE_WRITE_EFFORT", "high")
+TRIAGE_EFFORT = os.environ.get("CLAUDE_TRIAGE_EFFORT", "low")
+WRITE_EFFORT = os.environ.get("CLAUDE_WRITE_EFFORT", "medium")
 RULES = (Path(__file__).resolve().parent.parent / "prompts" / "editorial_rules.md").read_text(encoding="utf-8")
+# Lean by default: how much article text goes to the model per item.
+ARTICLE_CHARS = int(os.environ.get("ARTICLE_CHARS", "3000"))
+QC_CHARS = int(os.environ.get("QC_CHARS", "1800"))
+PARALLEL = int(os.environ.get("CLAUDE_PARALLEL", "2"))
 
 COUNTRIES = ["BR", "MX", "AR", "CO", "PE", "CL", "UY", "PA", "OTHER_LATAM"]
 SEGMENTS = ["banks", "fintechs", "insurers", "exchanges_capital_markets", "regulation_credit", "other"]
@@ -30,41 +32,11 @@ class EditorError(RuntimeError):
     pass
 
 
-_client: anthropic.Anthropic | None = None
-
-
-def client() -> anthropic.Anthropic:
-    global _client
-    if _client is None:
-        _client = anthropic.Anthropic(max_retries=4)
-    return _client
-
-
-def _call(task: str, payload: str, schema: dict, effort: str) -> dict:
-    """One structured-output request. Server-side refusal fallback is enabled so a safety-classifier
-    decline on the primary model is retried on a fallback model inside the same call."""
+def _call(task: str, payload: str, schema: dict, effort: str, step: str = "write") -> dict:
     try:
-        with client().beta.messages.stream(
-            model=MODEL,
-            max_tokens=64000,
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
-            thinking={"type": "adaptive"},
-            output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
-            system=[{"type": "text", "text": RULES, "cache_control": {"type": "ephemeral"}}],
-            messages=[{"role": "user", "content": f"{task}\n\n<data>\n{payload}\n</data>"}],
-        ) as stream:
-            msg = stream.get_final_message()
-    except anthropic.APIStatusError as e:
-        raise EditorError(f"Claude API error {e.status_code}: {e.message}") from e
-    except anthropic.APIConnectionError as e:
-        raise EditorError(f"Claude API connection error: {e}") from e
-    if msg.stop_reason == "refusal":
-        raise EditorError("Claude declined the request (refusal)")
-    if msg.stop_reason == "max_tokens":
-        raise EditorError("Claude output hit max_tokens")
-    text = next((b.text for b in msg.content if b.type == "text"), "")
-    return json.loads(text)
+        return llm.complete(RULES, f"{task}\n\n<data>\n{payload}\n</data>", schema, step, effort)
+    except (llm.LLMError, ValueError) as e:
+        raise EditorError(str(e)) from e
 
 
 def _obj(props: dict, required: list[str] | None = None) -> dict:
@@ -97,15 +69,16 @@ def triage(cands: list[Candidate], window: Window, chunk: int = 120) -> dict[str
     def run(batch: list[Candidate]) -> list[dict]:
         rows = [{
             "id": c.id, "headline": c.title, "outlet": c.source, "feed_date": _fmt_dt(c.feed_published),
-            "snippet": c.summary[:240], "search_hint": c.company_hint or "",
+            "snippet": c.summary[:160], "search_hint": c.company_hint or "",
         } for c in batch]
         out = _call(TRIAGE_TASK.format(window=window.describe()),
-                    "\n".join(json.dumps(r, ensure_ascii=False) for r in rows), TRIAGE_SCHEMA, TRIAGE_EFFORT)
+                    "\n".join(json.dumps(r, ensure_ascii=False) for r in rows), TRIAGE_SCHEMA, TRIAGE_EFFORT,
+                    "triage")
         return out["items"]
 
     batches = [cands[i:i + chunk] for i in range(0, len(cands), chunk)]
     results: dict[str, dict] = {}
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    with ThreadPoolExecutor(max_workers=PARALLEL) as ex:
         for items in ex.map(run, batches):
             for it in items:
                 results[it["id"]] = it
@@ -146,10 +119,10 @@ For EVERY id return an entry:
 
 def _article_block(c: Candidate) -> dict:
     status = "VERIFIED" if c.status == VERIFIED else "NAO_VERIFICADO"
-    text = c.article_text[:5000] if c.article_text else ""
+    text = c.article_text[:ARTICLE_CHARS] if c.article_text else ""
     return {
         "id": c.id, "status": status, "headline": c.headline, "outlet": c.source,
-        "published": _fmt_dt(c.best_date), "url": c.url, "feed_snippet": c.summary[:600],
+        "published": _fmt_dt(c.best_date), "url": c.url, "feed_snippet": c.summary[:400],
         "article_text": text, "country_hint": c.triage_country or c.country_hint or "",
     }
 
@@ -165,7 +138,7 @@ they are re-verifications and must be included.
 
 
 def write_up(cands: list[Candidate], window: Window, already_sent: list[str] | None = None,
-             chunk: int = 60) -> dict[str, dict]:
+             chunk: int = 40) -> dict[str, dict]:
     """Single call when possible so duplicates can be detected across the whole list."""
     task = WRITE_TASK.format(window=window.describe())
     if already_sent:
@@ -173,11 +146,11 @@ def write_up(cands: list[Candidate], window: Window, already_sent: list[str] | N
 
     def run(batch: list[Candidate]) -> list[dict]:
         payload = "\n".join(json.dumps(_article_block(c), ensure_ascii=False) for c in batch)
-        return _call(task, payload, WRITE_SCHEMA, WRITE_EFFORT)["items"]
+        return _call(task, payload, WRITE_SCHEMA, WRITE_EFFORT, "write")["items"]
 
     out: dict[str, dict] = {}
     batches = [cands[i:i + chunk] for i in range(0, len(cands), chunk)] or []
-    with ThreadPoolExecutor(max_workers=3) as ex:
+    with ThreadPoolExecutor(max_workers=PARALLEL) as ex:
         for items in ex.map(run, batches):
             for it in items:
                 out[it["id"]] = it
@@ -215,5 +188,5 @@ def final_qc(entries: list[dict], window: Window) -> dict[str, dict]:
     if not entries:
         return {}
     payload = "\n".join(json.dumps(e, ensure_ascii=False) for e in entries)
-    out = _call(QC_TASK + f"\nWindow: {window.describe()}", payload, QC_SCHEMA, WRITE_EFFORT)
+    out = _call(QC_TASK + f"\nWindow: {window.describe()}", payload, QC_SCHEMA, WRITE_EFFORT, "qc")
     return {it["id"]: it for it in out["items"]}

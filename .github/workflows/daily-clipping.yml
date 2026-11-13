@@ -31,6 +31,13 @@ jobs:
       - name: Instalar dependências
         run: pip install -r requirements.txt
 
+      # O Claude Code usa a sua assinatura (plano Pro) em vez da API paga.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Instalar Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
       # Memória entre execuções: feeds travados há vários dias + itens guardados pela coleta noturna
       - name: Restaurar estado
         uses: actions/cache/restore@v4
@@ -41,7 +48,7 @@ jobs:
 
       - name: Gerar e enviar o clipping
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           CLIPPING_TO: ${{ secrets.CLIPPING_TO }}

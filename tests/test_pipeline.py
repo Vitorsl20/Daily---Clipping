@@ -37,7 +37,7 @@ def fake_get(url, timeout=25, no_cache=False):
     return Resp(url, code, text)
 
 
-def fake_call(task, payload, schema, effort):
+def fake_call(task, payload, schema, effort, step="write"):
     import json
 
     rows = [json.loads(l) for l in payload.splitlines() if l.strip()]

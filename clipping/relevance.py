@@ -14,6 +14,10 @@ SECTOR_TERMS = [
     "pix", "cartao", "consignado", "pagamento", "maquininha", "corretora", "febraban", "lucro", "balanco",
     "resultado", "dividendo", "recompra", "fusao", "aquisicao", "liquidacao", "fgc",
     "aseguradora", "cnbv", "banxico", "bcra", "sbs", "superfinanciera", "bcrp", "banco de la republica",
+    "bc", "galipolo", "fazenda", "open finance", "drex", "tesouro direto", "cdb", "lci", "lca", "cri", "cra",
+    "mercado pago", "c6", "neon", "banco pan", "safra", "sicredi", "sicoob", "caixa", "cielo", "getnet",
+    "ebanx", "creditas", "mercado livre", "bancolombia", "bbva", "santander", "hsbc", "citi", "jpmorgan",
+    "fiagro", "fii", "fidc", "securitizadora", "gestora", "asset", "private equity", "venture capital",
 ]
 
 

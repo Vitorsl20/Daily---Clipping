@@ -59,16 +59,33 @@ coleta (RSS.app + sitemaps/RSS nativos + GDELT + secundárias + outlets + 36 bus
 Janela de notícias: desde ontem às 13:00 BRT até a hora da execução; **segunda-feira** desde sexta às
 13:00 (fim de semana). Ajustável com `FRESHNESS_CUTOFF_HOUR`.
 
+## Custo
+
+Zero além do que você já paga. O Claude roda pela **sua assinatura (plano Pro)**, via Claude Code, e não pela
+API paga. Usa o **Haiku** em todas as etapas, para gastar pouco da cota. GitHub (dentro do grátis), Gmail,
+Google News, Bing, GDELT e sitemaps são gratuitos, e o RSS.app é o plano que você já tem.
+O uso entra nos limites do plano Pro: se num dia o limite for atingido, o e-mail sai mesmo assim, com uma nota
+avisando que a triagem ou a redação automática falhou.
+
+Para economizar cota, antes de qualquer chamada ao Claude:
+- títulos sem nenhum termo do setor nem nome de empresa, vindos de feeds que cobrem o site inteiro
+  (esporte, política…), são descartados por regra fixa;
+- cada matéria entra com no máximo 3.000 caracteres;
+- o complemento das 6h só manda ao Claude o que a edição das 05:17 não tinha como ter: itens publicados
+  depois dela e itens dos sites que bloqueiam a nuvem.
+
 ## Como ativar (uma vez)
 
-1. **Chave da API do Claude**: crie em https://console.anthropic.com → API Keys.
+1. **Token da sua assinatura do Claude**: instale o Claude Code no seu computador
+   (Windows: no PowerShell, `irm https://claude.ai/install.ps1 | iex`), rode `claude setup-token`, entre com a
+   conta do plano Pro no navegador e copie o token que aparece.
 2. **Senha de app do Gmail**: com verificação em 2 etapas ativa, gere em https://myaccount.google.com/apppasswords.
 3. No GitHub: *Settings → Secrets and variables → Actions → New repository secret*, crie:
-   - `ANTHROPIC_API_KEY`
+   - `CLAUDE_CODE_OAUTH_TOKEN` — o token do passo 1
    - `GMAIL_ADDRESS` — conta que envia
    - `GMAIL_APP_PASSWORD` — a senha de app (16 letras)
    - `CLIPPING_TO` — quem recebe (se vazio, envia para `GMAIL_ADDRESS`)
-4. Faça o merge na branch padrão (o agendamento do GitHub só roda a partir dela).
+4. A branch `claude/cool-carson-f3jzvz` já é a principal do repositório; não precisa de merge.
 5. Teste em *Actions → LatAm Financials Clipping → Run workflow* (marque "Só gerar" para não enviar e-mail).
    O resultado fica nos *artifacts* da execução: `clipping-AAAA-MM-DD.txt/.html` e um `.json` com o
    relatório completo (cada fonte, cada exclusão e o motivo).
@@ -97,7 +114,7 @@ o computador espera até 20 min e, se ela não chegar, envia o clipping completo
    (o Windows abre o navegador para você entrar no GitHub, se o repositório for privado).
 3. Abra a pasta `scripts\windows` e dê **dois cliques em `INSTALAR.bat`**. Ele:
    instala o Python se faltar (aí é só rodar de novo), instala as dependências, pede as credenciais
-   (as mesmas dos Secrets do GitHub; ficam só neste PC, no arquivo `.env`), cria a tarefa agendada
+   (as mesmas dos Secrets do GitHub, incluindo o token do `claude setup-token`; ficam só neste PC, no `.env`), cria a tarefa agendada
    **"LatAm Clipping - complemento 6h"** e oferece um teste sem enviar e-mail.
 
 A tarefa dispara 2 min após o login e às 06:05. Se às 06:05 o PC estiver desligado ou dormindo, ela roda
@@ -112,7 +129,7 @@ Variáveis opcionais (no `.env`): `COMPLEMENT_LATEST_HOUR` (14), `COMPLEMENT_WAI
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
-export ANTHROPIC_API_KEY=...            # e GMAIL_ADDRESS / GMAIL_APP_PASSWORD / CLIPPING_TO para enviar
+export CLAUDE_CODE_OAUTH_TOKEN=...      # ou só esteja logado no `claude`; e GMAIL_ADDRESS / GMAIL_APP_PASSWORD / CLIPPING_TO para enviar
 python -m clipping --dry-run            # gera output/clipping-AAAA-MM-DD.txt sem enviar
 python -m clipping --collect-only       # só coleta e guarda (o que a coleta noturna faz)
 python -m clipping --complement --dry-run --force   # testa o complemento das 6h
@@ -125,9 +142,11 @@ python -m pytest -q                     # testes
 - `config/sources.yaml` — feeds do RSS.app, fontes secundárias, outlets (RSS e páginas de listagem).
 - `config/companies.yaml` — as 36 empresas, termos de busca de cada uma e buscas setoriais por país.
 - `prompts/editorial_rules.md` — regras editoriais (escopo, cripto, research de concorrentes, formato).
-- Variáveis opcionais: `CLAUDE_MODEL` (padrão `claude-opus-5-5`), `CLAUDE_TRIAGE_EFFORT` (`medium`),
-  `CLAUDE_WRITE_EFFORT` (`high`), `FRESHNESS_CUTOFF_HOUR` (13), `COLLECT_DEADLINE_MINUTES` (12),
+- Variáveis opcionais: `CLAUDE_MODEL` (padrão `haiku` em todas as etapas) ou por etapa
+  `CLAUDE_MODEL_TRIAGE` / `CLAUDE_MODEL_WRITE` / `CLAUDE_MODEL_QC` (`haiku`, `sonnet`, `opus`),
+  `CLAUDE_TRIAGE_EFFORT` (`low`), `CLAUDE_WRITE_EFFORT` (`medium`), `ARTICLE_CHARS` (3000), `QC_CHARS` (1800),
+  `CLAUDE_PARALLEL` (2), `EDITOR_BACKEND` (`subscription` ou `api`), `FRESHNESS_CUTOFF_HOUR` (13), `COLLECT_DEADLINE_MINUTES` (12),
   `CLIPPING_DEADLINE_MINUTES` (25), `SEARCH_CONCURRENCY` (6), `VERIFY_CONCURRENCY` (12).
 
-As chamadas ao Claude usam o fallback automático do servidor (`fallbacks: "default"`): se o modelo
-principal recusar um pedido por filtro de segurança, outro modelo refaz o pedido na mesma chamada.
+Se um dia você preferir a API paga (sem depender da cota do plano), cadastre `ANTHROPIC_API_KEY` no lugar de
+`CLAUDE_CODE_OAUTH_TOKEN` e mude a linha correspondente no workflow; o código detecta sozinho qual usar.

@@ -44,8 +44,10 @@ def test_complement_flow(monkeypatch, tmp_path):
     monkeypatch.setattr(verify, "verify", fake_verify)
     seen = {}
 
-    def fake_produce(window, t0, report, extra_usable=None, already_sent=None, record_health=True):
+    def fake_produce(window, t0, report, extra_usable=None, already_sent=None, record_health=True,
+                     candidate_filter=None):
         seen["already"] = already_sent
+        seen["filter"] = candidate_filter
         up = extra_usable[0]
         mk = lambda id_, h, url, unv: Entry(id_, h, "Valor Econômico", datetime(2026, 11, 12, 20, tzinfo=BRT), url,
                                             "t", "T", "P", unv, "BR", "banks")
@@ -68,6 +70,13 @@ def test_complement_flow(monkeypatch, tmp_path):
     assert txt.count('"Itaú anuncia recompra"') == 0                 # already sent at 05:17
     assert "Continuam NÃO VERIFICADOS mesmo do computador: Bradesco troca CFO" in txt
     assert all("Nubank" not in a for a in seen["already"])            # re-verified item isn't a duplicate of itself
+    from clipping.models import Candidate
+    f = seen["filter"]
+    early = datetime(2026, 11, 12, 18, 0, tzinfo=BRT)
+    assert not f(Candidate("x", "https://www.infomoney.com.br/itau", "InfoMoney", ["t"], now))     # already sent
+    assert f(Candidate("x", "https://exame.com/a", "Exame", ["t"], now))                         # after 05:17
+    assert not f(Candidate("x", "https://exame.com/b", "Exame", ["t"], early))                   # judged at 05:17
+    assert f(Candidate("x", "https://valor.globo.com/c", "Valor Econômico", ["t"], early))       # blocked in cloud
     # second login the same day: nothing happens
     sent.clear()
     assert comp.complement(now=now) == 0 and not sent

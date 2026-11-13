@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import pipeline, verify
@@ -71,9 +71,22 @@ def complement(now: datetime | None = None, dry_run: bool = False, force: bool =
 
     # 3) full collection again; the editor drops stories already sent
     already = [f"{s.headline} ({s.source})" for s in sent if not any(norm_url(u.url) == norm_url(s.url) for u in upgrades)]
-    entries, _, _ = pipeline.produce(window, t0, report, extra_usable=upgrades, already_sent=already,
-                                     record_health=False)
     sent_urls = {norm_url(s.url) for s in sent}
+    sources, _ = pipeline.load_config()
+    paywalled = {f["outlet"] for f in sources["rss_app"]}
+    since = (sent_at or window.end.replace(hour=5, minute=17)).astimezone(BRT)
+
+    def lean(c: Candidate) -> bool:
+        """Lean complement: only what the 05:17 run could not have had — items published around/after it, and
+        items from the outlets that block cloud servers. Everything else was already judged at 05:17."""
+        if norm_url(c.url) in sent_urls:
+            return False
+        if c.feed_published and c.feed_published.astimezone(BRT) >= since.replace(second=0) - timedelta(minutes=15):
+            return True
+        return c.source in paywalled
+
+    entries, _, _ = pipeline.produce(window, t0, report, extra_usable=upgrades, already_sent=already,
+                                     record_health=False, candidate_filter=lean)
     upgrade_ids = {c.id for c in upgrades}
     now_verified = [e for e in entries if e.id in upgrade_ids and not e.unverified]
     new = [e for e in entries if e.id not in upgrade_ids and norm_url(e.url) not in sent_urls]

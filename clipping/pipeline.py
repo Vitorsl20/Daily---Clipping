@@ -104,6 +104,22 @@ def _name_outlets(cands: list[Candidate], sources: dict) -> None:
         c.source = c.source.replace(" (BR)", "")
 
 
+_TARGETED_PREFIXES = ("secondary:", "corroboração")
+
+
+def is_targeted(c: Candidate) -> bool:
+    """Found by a sector-specific source or query (company search, sector search, site: query with sector
+    words, FinsidersBrasil/SonhoSeguro…) — as opposed to a whole-site feed that also carries sports/politics."""
+    if c.company_hint:
+        return True
+    for v in c.discovered_via:
+        if v.startswith(_TARGETED_PREFIXES):
+            return True
+        if v.startswith(("gnews:", "bing:")):  # every search query is sector- or company-specific
+            return True
+    return False
+
+
 def keywords(title: str, n: int = 6) -> str:
     words = [w for w in re.findall(r"[\wÀ-ÿ$%]+", title) if w.lower() not in STOPWORDS and len(w) > 2]
     return " ".join(words[:n])
@@ -293,8 +309,8 @@ def collect_only(now: datetime | None = None) -> int:
 
 
 def produce(window: Window, t0: float, report: RunReport, *, extra_usable: list[Candidate] | None = None,
-            already_sent: list[str] | None = None, record_health: bool = True
-            ) -> tuple[list[Entry], list[SourceResult], list[SourceResult]]:
+            already_sent: list[str] | None = None, record_health: bool = True,
+            candidate_filter=None) -> tuple[list[Entry], list[SourceResult], list[SourceResult]]:
     """Steps shared by the morning brief and the 6h complement: collect → triage → verify → write → QC."""
     deadline = t0 + 60 * float(os.environ.get("CLIPPING_DEADLINE_MINUTES", "25"))
     run_day = window.end.strftime("%Y-%m-%d")
@@ -322,14 +338,20 @@ def produce(window: Window, t0: float, report: RunReport, *, extra_usable: list[
     _name_outlets(raw, sources)
     cands = merge_duplicates(raw)
     skip_urls = {norm_url(c.url) for c in extra_usable or []}
-    fresh = []
+    relevant = build_matcher(companies)
+    fresh, off_topic = [], 0
     for c in cands:
         if c.feed_published is not None and not window.contains(c.feed_published):
             continue  # feed already says it's older than the window
         if norm_url(c.url) in skip_urls:
             continue  # already handled (complement: re-checked morning items)
+        if candidate_filter is not None and not candidate_filter(c):
+            continue
+        if not is_targeted(c) and not relevant(c.title, c.url):
+            off_topic += 1  # whole-site channel, no sector word / company name: not worth a model call
+            continue
         fresh.append(c)
-    report.counts.update(raw=len(raw), unique=len(cands), fresh_by_feed=len(fresh))
+    report.counts.update(raw=len(raw), unique=len(cands), fresh_by_feed=len(fresh), keyword_filtered=off_topic)
 
     # 3) triage on headlines
     try:
@@ -508,8 +530,8 @@ def _write_and_qc(usable: list[Candidate], window: Window, report: RunReport,
     qc_rows = [{
         "id": e.id, "status": "NAO_VERIFICADO" if e.unverified else "VERIFIED", "headline": e.headline,
         "outlet": e.source, "takeaway_pt": e.takeaway_pt, "title_en": e.title_en, "paragraph_en": e.paragraph_en,
-        "source_material": (by_id[e.id].article_text[:4000] if not e.unverified else
-                            (by_id[e.id].summary or "") + "\n" + by_id[e.id].article_text[:2000]),
+        "source_material": (by_id[e.id].article_text[:editor.QC_CHARS] if not e.unverified else
+                            (by_id[e.id].summary or "") + "\n" + by_id[e.id].article_text[:editor.QC_CHARS]),
     } for e in entries]
     try:
         qc = editor.final_qc(qc_rows, window)

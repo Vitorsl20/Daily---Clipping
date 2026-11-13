@@ -32,6 +32,16 @@ Write-Host "Instalando dependências (pode levar 1-2 minutos)..."
 & $VenvPy -m pip install -r (Join-Path $Repo "requirements.txt") --quiet --disable-pip-version-check
 if ($LASTEXITCODE -ne 0) { throw "Falha ao instalar as dependências." }
 
+# 2b) Claude Code (usa a sua assinatura do Claude, sem custo de API)
+if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
+    Write-Host "Instalando o Claude Code..."
+    Invoke-RestMethod https://claude.ai/install.ps1 | Invoke-Expression
+    $env:Path = [Environment]::GetEnvironmentVariable("Path", "User") + ";" + [Environment]::GetEnvironmentVariable("Path", "Machine")
+}
+$ClaudeCmd = Get-Command claude -ErrorAction SilentlyContinue
+if (-not $ClaudeCmd) { throw "Não consegui instalar o Claude Code. Feche esta janela, abra outra e rode o instalador de novo." }
+$ClaudePath = $ClaudeCmd.Source
+
 # 3) Credenciais (ficam só neste computador, no arquivo .env, legível apenas pelo seu usuário)
 function Read-Secret([string]$Prompt) {
     $sec = Read-Host $Prompt -AsSecureString
@@ -44,12 +54,12 @@ if (Test-Path $EnvFile) { $write = (Read-Host "Já existem credenciais salvas. D
 if ($write) {
     Write-Host ""
     Write-Host "Use as MESMAS credenciais cadastradas nos Secrets do GitHub." -ForegroundColor Cyan
-    $key = Read-Secret "Chave da API do Claude (ANTHROPIC_API_KEY)"
+    $key = Read-Secret "Token da assinatura do Claude (CLAUDE_CODE_OAUTH_TOKEN, gerado com 'claude setup-token')"
     $gm  = Read-Host "Gmail que envia o clipping (GMAIL_ADDRESS)"
     $gp  = (Read-Secret "Senha de app do Gmail - 16 letras (GMAIL_APP_PASSWORD)") -replace "\s", ""
     $to  = Read-Host "E-mail que recebe (CLIPPING_TO) - Enter para usar o mesmo"
     if (-not $to) { $to = $gm }
-    $content = "ANTHROPIC_API_KEY=$key`nGMAIL_ADDRESS=$gm`nGMAIL_APP_PASSWORD=$gp`nCLIPPING_TO=$to`n"
+    $content = "CLAUDE_CODE_OAUTH_TOKEN=$key`nCLAUDE_CLI=$ClaudePath`nGMAIL_ADDRESS=$gm`nGMAIL_APP_PASSWORD=$gp`nCLIPPING_TO=$to`n"
     [IO.File]::WriteAllText($EnvFile, $content, (New-Object System.Text.UTF8Encoding $false))
     icacls $EnvFile /inheritance:r /grant:r "$($env:USERNAME):(R,W)" | Out-Null
     Write-Host "Credenciais salvas em $EnvFile"
